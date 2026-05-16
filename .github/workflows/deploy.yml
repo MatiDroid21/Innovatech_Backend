@@ -1,6 +1,5 @@
 name: CI/CD — Build, Push & Deploy Backend
 
-# ✔ Se activa solo con push a la rama 'deploy'
 on:
   push:
     branches:
@@ -8,9 +7,6 @@ on:
 
 jobs:
 
-  # ─────────────────────────────────────────────
-  # JOB 1: Build y Push — API Ventas
-  # ─────────────────────────────────────────────
   build-ventas:
     name: Build & Push — API Ventas
     runs-on: ubuntu-latest
@@ -33,9 +29,6 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/innovatech-ventas:latest
 
-  # ─────────────────────────────────────────────
-  # JOB 2: Build y Push — API Despachos
-  # ─────────────────────────────────────────────
   build-despachos:
     name: Build & Push — API Despachos
     runs-on: ubuntu-latest
@@ -58,9 +51,6 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/innovatech-despachos:latest
 
-  # ─────────────────────────────────────────────
-  # JOB 3: Deploy en EC2 (espera que ambos builds terminen)
-  # ─────────────────────────────────────────────
   deploy:
     name: Deploy en EC2
     runs-on: ubuntu-latest
@@ -81,6 +71,8 @@ jobs:
           proxy_key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/Innovatech_Backend
+
+            git remote set-url origin https://github.com/MatiDroid21/Innovatech_Backend.git
 
             git pull origin deploy
 
