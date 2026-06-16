@@ -1,4 +1,4 @@
-name: CI/CD — Build, Push & Deploy Backend
+name: CI/CD — Build, Push & Deploy Backend (EKS)
 
 on:
   push:
@@ -10,16 +10,21 @@ jobs:
   build-ventas:
     name: Build & Push — API Ventas
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Login a Docker Hub
-        uses: docker/login-action@v3
+      - name: Configurar AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login a Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build y Push imagen Ventas
         uses: docker/build-push-action@v5
@@ -27,21 +32,26 @@ jobs:
           context: ./back-Ventas_SpringBoot/Springboot-API-REST
           dockerfile: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/innovatech-ventas:latest
+          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:ventas-latest
 
   build-despachos:
     name: Build & Push — API Despachos
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Login a Docker Hub
-        uses: docker/login-action@v3
+      - name: Configurar AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login a Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build y Push imagen Despachos
         uses: docker/build-push-action@v5
@@ -49,40 +59,34 @@ jobs:
           context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
           dockerfile: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/innovatech-despachos:latest
+          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:despachos-latest
 
   deploy:
-    name: Deploy en EC2
+    name: Deploy en EKS
     runs-on: ubuntu-latest
     needs: [build-ventas, build-despachos]
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH a EC2 (a través de bastion frontend)
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Configurar AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          proxy_host: ${{ secrets.EC2_BASTION_HOST }}
-          proxy_username: ${{ secrets.EC2_USER }}
-          proxy_key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd ~/Innovatech_Backend
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-            git remote set-url origin https://github.com/MatiDroid21/Innovatech_Backend.git
+      - name: Configurar kubectl
+        run: aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-            git pull origin deploy
-
-            cat > .env <<EOF
-            DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
-            DB_NAME=${{ secrets.DB_NAME }}
-            DB_USERNAME=${{ secrets.DB_USERNAME }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            EOF
-
-            sudo docker compose pull
-            sudo docker compose up -d --remove-orphans
-            sudo docker image prune -f
+      - name: Deploy en EKS
+        run: |
+          kubectl apply -f k8s/deployment-ventas.yaml
+          kubectl apply -f k8s/deployment-despachos.yaml
+          kubectl apply -f k8s/service-ventas.yaml
+          kubectl apply -f k8s/service-despachos.yaml
+          kubectl apply -f k8s/hpa-ventas.yaml
+          kubectl apply -f k8s/hpa-despachos.yaml
+          kubectl rollout status deployment/ventas-deployment
+          kubectl rollout status deployment/despachos-deployment
