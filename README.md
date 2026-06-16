@@ -1,150 +1,118 @@
-# Innovatech Backend — Microservicios Spring Boot
+# Innovatech Chile — Backend
 
-Backend de la plataforma Innovatech Chile, compuesto por dos microservicios desarrollados en **Spring Boot**:
-- **back-Ventas_SpringBoot** — Gestión de ventas
-- **back-Despachos_SpringBoot** — Gestión de despachos
-
-Desplegado en una instancia **EC2 privada** en AWS, contenerizado con Docker y con pipeline CI/CD automatizado mediante **GitHub Actions**.
+API REST del sistema de gestión de Innovatech Chile, compuesta por
+dos microservicios independientes desarrollados con **Spring Boot**,
+desplegados en **Amazon EKS** y conectados a una base de datos **MySQL**.
 
 ---
 
-## Arquitectura
-EC2 Backend (subred privada)
-├── Contenedor: back-ventas → Puerto 8080
-├── Contenedor: back-despachos → Puerto 8081
-└── Contenedor: PostgreSQL → Puerto 5432 (volumen persistente)
+## Microservicios
 
-El frontend (EC2 pública) se comunica con el backend a través de la subred interna de la VPC. El backend **no es accesible directamente desde Internet**.
-
----
-
-## Contenedorización
-
-### Requisitos previos
-- Docker >= 24.x
-- Docker Compose >= 2.x
-
-### Variables de entorno
-
-Copia `.env.example` a `.env` y completa los valores:
-
-```bash
-cp .env.example .env
-```
-
-| Variable | Descripción |
-|---|---|
-| `DB_HOST` | Host de la base de datos |
-| `DB_PORT` | Puerto PostgreSQL (default: 5432) |
-| `DB_NAME` | Nombre de la base de datos |
-| `DB_USER` | Usuario de la base de datos |
-| `DB_PASSWORD` | Contraseña de la base de datos |
-
-### Levantar el stack completo
-
-```bash
-docker compose up -d
-```
-
-### Verificar que los contenedores están corriendo
-
-```bash
-docker compose ps
-docker compose logs -f
-```
-
-### Detener servicios
-
-```bash
-docker compose down
-```
-
-### Detener y eliminar volúmenes (borra datos)
-
-```bash
-docker compose down -v
-```
+| Servicio | Puerto | Descripción |
+|---|---|---|
+| `back-Ventas_SpringBoot` | 8080 | Gestión de ventas (CRUD) |
+| `back-Despachos_SpringBoot` | 8081 | Gestión de despachos (CRUD) |
 
 ---
 
-## Persistencia de datos
+## Tecnologías utilizadas
 
-Se utiliza un **named volume** (`postgres_data`) para garantizar que los datos de PostgreSQL persistan entre reinicios de contenedores.
-
-```yaml
-volumes:
-  postgres_data:
-```
-
-Se eligió **named volume** en lugar de bind mount porque:
-- Es gestionado completamente por Docker, sin dependencia del path del host.
-- Es portable entre distintas máquinas y entornos (local, EC2).
-- Facilita backups y restauración.
-
----
-
-## Pipeline CI/CD — GitHub Actions
-
-El pipeline se activa automáticamente con cada `push` a la rama **`deploy`**.
-
-### Flujo del pipeline
-push → rama deploy
-↓
-
-Build de imagen Docker (multi-stage)
-↓
-
-Push de imagen a Docker Hub / ECR
-↓
-
-SSH a EC2 → docker compose pull → docker compose up -d
-
-text
-
-### GitHub Secrets requeridos
-
-Configurar en **Settings → Secrets and variables → Actions**:
-
-| Secret | Descripción |
-|---|---|
-| `DOCKERHUB_USERNAME` | Usuario de Docker Hub |
-| `DOCKERHUB_TOKEN` | Token de acceso Docker Hub |
-| `EC2_HOST` | IP pública o privada de la instancia EC2 |
-| `EC2_USER` | Usuario SSH de la EC2 (ej: `ec2-user`) |
-| `EC2_SSH_KEY` | Clave privada SSH (contenido del `.pem`) |
-
-### Activar el pipeline
-
-```bash
-git checkout deploy
-git merge main   # o la rama con tus cambios
-git push origin deploy
-```
+- Java 17 + Spring Boot 3.4
+- Spring Data JPA + Hibernate
+- MySQL 8
+- Docker + Docker Compose
+- GitHub Actions (CI/CD)
+- Amazon EKS (Kubernetes)
+- Kubernetes Secrets (gestión de credenciales)
 
 ---
 
 ## Estructura del repositorio
 Innovatech_Backend/
-├── .github/
-│ └── workflows/ # Pipelines GitHub Actions
-├── back-Ventas_SpringBoot/
-│ ├── Dockerfile # Multi-stage build
-│ └── src/
-├── back-Despachos_SpringBoot/
-│ ├── Dockerfile # Multi-stage build
-│ └── src/
-├── infra/ # Configuración de infraestructura AWS
-├── docker-compose.yml # Stack completo de servicios
-├── .env.example # Variables de entorno requeridas
-└── README.md
+├── back-Ventas_SpringBoot/ # Microservicio de ventas
+│ └── Springboot-API-REST/ # Código fuente Spring Boot
+├── back-Despachos_SpringBoot/ # Microservicio de despachos
+│ └── Springboot-API-REST-DESPACHO/
+├── infra/
+│ └── infra-setup.sh # Script de infraestructura AWS
+├── docker-compose.yml # Levantamiento local completo
+└── .env.example # Variables de entorno requeridas
+
+text
 
 ---
 
-##Integrantes
+## Variables de entorno
 
-- Keiton Chaves
-- Sergio Soto
-- Matías Chávez
+Crear un archivo `.env` basado en `.env.example`:
 
-**Asignatura:** Introducción a Herramientas DevOps — ISY1101  
-**Institución:** Duoc UC
+```env
+DB_ENDPOINT=localhost
+DB_PORT=3306
+DB_NAME=innovatech
+DB_USERNAME=admin
+DB_PASSWORD=admin1234
+```
+
+> En el clúster EKS estas variables se gestionan mediante **Kubernetes Secrets**
+> para evitar exponer credenciales en el código.
+
+---
+
+## Levantar localmente
+
+```bash
+git clone https://github.com/MatiDroid21/Innovatech_Backend.git
+cd Innovatech_Backend
+cp .env.example .env
+# Editar .env con las credenciales locales
+docker compose up -d --build
+```
+
+Servicios disponibles:
+- Ventas: `http://localhost:8080/api/ventas`
+- Despachos: `http://localhost:8081/api/despachos`
+
+---
+
+## Despliegue en EKS
+
+Los microservicios corren como `Deployments` en Amazon EKS con 2 réplicas cada uno.
+Las credenciales de base de datos se inyectan mediante **Kubernetes Secrets**:
+
+```bash
+kubectl create secret generic backend-secrets \
+  --from-literal=DB_ENDPOINT=mysql-service \
+  --from-literal=DB_PORT=3306 \
+  --from-literal=DB_NAME=innovatech \
+  --from-literal=DB_USERNAME=admin \
+  --from-literal=DB_PASSWORD=admin1234
+```
+
+Los servicios son de tipo `ClusterIP` (acceso interno únicamente),
+comunicándose con el frontend a través del DNS interno del clúster.
+
+```bash
+# Ver estado de los pods
+kubectl get pods
+
+# Ver logs de un microservicio
+kubectl logs deployment/ventas-deployment
+kubectl logs deployment/despachos-deployment
+```
+
+---
+
+## Endpoints principales
+
+**Ventas** (`/api/ventas`):
+- `GET /api/ventas` — Listar todas las ventas
+- `POST /api/ventas` — Crear nueva venta
+- `PUT /api/ventas/{id}` — Actualizar venta
+- `DELETE /api/ventas/{id}` — Eliminar venta
+
+**Despachos** (`/api/despachos`):
+- `GET /api/despachos` — Listar todos los despachos
+- `POST /api/despachos` — Crear nuevo despacho
+- `PUT /api/despachos/{id}` — Actualizar despacho
+- `DELETE /api/despachos/{id}` — Eliminar despacho
