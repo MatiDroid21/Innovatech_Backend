@@ -1,4 +1,4 @@
-name: CI/CD — Build, Push & Deploy Backend (EKS)
+name: CI/CD — Build, Push & Deploy Backend EKS
 
 on:
   push:
@@ -7,14 +7,18 @@ on:
 
 jobs:
 
+  # ─────────────────────────────────────────────
+  # JOB 1: Build y Push — API Ventas
+  # ─────────────────────────────────────────────
   build-ventas:
     name: Build & Push — API Ventas
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Configurar AWS Credentials
+      - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -23,10 +27,9 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login a Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build y Push imagen Ventas
+      - name: Build y Push imagen Ventas a ECR
         uses: docker/build-push-action@v5
         with:
           context: ./back-Ventas_SpringBoot/Springboot-API-REST
@@ -34,14 +37,18 @@ jobs:
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:ventas-latest
 
+  # ─────────────────────────────────────────────
+  # JOB 2: Build y Push — API Despachos
+  # ─────────────────────────────────────────────
   build-despachos:
     name: Build & Push — API Despachos
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Configurar AWS Credentials
+      - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -50,10 +57,9 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login a Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build y Push imagen Despachos
+      - name: Build y Push imagen Despachos a ECR
         uses: docker/build-push-action@v5
         with:
           context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
@@ -61,15 +67,19 @@ jobs:
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:despachos-latest
 
+  # ─────────────────────────────────────────────
+  # JOB 3: Deploy en EKS
+  # ─────────────────────────────────────────────
   deploy:
     name: Deploy en EKS
     runs-on: ubuntu-latest
     needs: [build-ventas, build-despachos]
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Configurar AWS Credentials
+      - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -77,16 +87,18 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Configurar kubectl
-        run: aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
-
-      - name: Deploy en EKS
+      - name: Configurar kubectl para EKS
         run: |
-          kubectl apply -f k8s/deployment-ventas.yaml
-          kubectl apply -f k8s/deployment-despachos.yaml
-          kubectl apply -f k8s/service-ventas.yaml
-          kubectl apply -f k8s/service-despachos.yaml
-          kubectl apply -f k8s/hpa-ventas.yaml
-          kubectl apply -f k8s/hpa-despachos.yaml
-          kubectl rollout status deployment/ventas-deployment
-          kubectl rollout status deployment/despachos-deployment
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Rollout restart Ventas
+        run: kubectl rollout restart deployment/ventas-deployment
+
+      - name: Rollout restart Despachos
+        run: kubectl rollout restart deployment/despachos-deployment
+
+      - name: Verificar estado del despliegue
+        run: |
+          kubectl rollout status deployment/ventas-deployment --timeout=180s
+          kubectl rollout status deployment/despachos-deployment --timeout=180s
+          kubectl get pods
