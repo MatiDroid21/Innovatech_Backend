@@ -23,15 +23,16 @@ desplegados en **Amazon EKS** y conectados a una base de datos **MySQL**.
 - Docker + Docker Compose
 - GitHub Actions (CI/CD)
 - Amazon EKS (Kubernetes)
+- Amazon ECR (registro de imágenes)
 - Kubernetes Secrets (gestión de credenciales)
 
 ---
 
 ## Estructura del repositorio
 Innovatech_Backend/
-├── back-Ventas_SpringBoot/ # Microservicio de ventas
+├── back-Ventas_SpringBoot/
 │ └── Springboot-API-REST/ # Código fuente Spring Boot
-├── back-Despachos_SpringBoot/ # Microservicio de despachos
+├── back-Despachos_SpringBoot/
 │ └── Springboot-API-REST-DESPACHO/
 ├── infra/
 │ └── infra-setup.sh # Script de infraestructura AWS
@@ -75,9 +76,45 @@ Servicios disponibles:
 
 ---
 
+## Pipeline CI/CD (GitHub Actions)
+
+El pipeline se activa automáticamente con cada push a la rama `deploy`.
+
+**Job 1 — Build & Push Ventas:**
+1. Construye la imagen Docker del microservicio de ventas.
+2. Se autentica en Amazon ECR con credenciales AWS.
+3. Publica la imagen en ECR como `inovatech-backend:ventas-latest`.
+
+**Job 2 — Build & Push Despachos:**
+1. Construye la imagen Docker del microservicio de despachos.
+2. Se autentica en Amazon ECR con credenciales AWS.
+3. Publica la imagen en ECR como `inovatech-backend:despachos-latest`.
+
+**Job 3 — Deploy en EKS (depende de Job 1 y Job 2):**
+1. Configura las credenciales AWS en el runner.
+2. Actualiza el contexto de `kubectl` apuntando al clúster EKS.
+3. Ejecuta `rollout restart` en ambos deployments.
+4. Verifica el estado del despliegue con `rollout status`.
+
+**Secrets requeridos en GitHub:**
+
+| Secret | Descripción |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | Credencial de acceso AWS |
+| `AWS_SECRET_ACCESS_KEY` | Clave secreta AWS |
+| `AWS_SESSION_TOKEN` | Token de sesión temporal AWS Academy |
+| `AWS_REGION` | Región del clúster (us-east-1) |
+| `ECR_REGISTRY` | URL del registro de imágenes ECR |
+| `EKS_CLUSTER_NAME` | Nombre del clúster EKS destino |
+
+---
+
 ## Despliegue en EKS
 
-Los microservicios corren como `Deployments` en Amazon EKS con 2 réplicas cada uno.
+Los microservicios corren como `Deployments` en Amazon EKS con 1 réplica activa,
+escalando hasta 4 mediante **Horizontal Pod Autoscaler (HPA)** según demanda de CPU
+(umbral 50%).
+
 Las credenciales de base de datos se inyectan mediante **Kubernetes Secrets**:
 
 ```bash
@@ -95,6 +132,9 @@ comunicándose con el frontend a través del DNS interno del clúster.
 ```bash
 # Ver estado de los pods
 kubectl get pods
+
+# Ver HPA
+kubectl get hpa
 
 # Ver logs de un microservicio
 kubectl logs deployment/ventas-deployment
