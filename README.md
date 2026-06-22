@@ -156,3 +156,69 @@ kubectl logs deployment/despachos-deployment
 - `POST /api/despachos` — Crear nuevo despacho
 - `PUT /api/despachos/{id}` — Actualizar despacho
 - `DELETE /api/despachos/{id}` — Eliminar despacho
+
+
+## Arquitectura de microservicios
+
+Ambos microservicios corren como `Deployments` independientes dentro del clúster EKS.
+Se comunican con MySQL a través del service interno `mysql-service` (ClusterIP).
+El frontend los alcanza mediante `ventas-service` y `despachos-service` usando el
+DNS interno de Kubernetes, sin exponer ningún puerto al exterior.
+[Pod Frontend]
+├──► ventas-service:80 ──► [Pod Ventas :8080] ──► mysql-service:3306
+└──► despachos-service:80 ──► [Pod Despachos :8081] ──► mysql-service:3306
+│
+[Pod MySQL 8]
+---
+
+## Problemas encontrados y soluciones
+
+### CrashLoopBackOff — Public Key Retrieval is not allowed
+**Causa:** MySQL 8 usa `caching_sha2_password` por defecto, lo que requiere
+que el cliente pueda recuperar la clave pública del servidor. Sin el parámetro
+correcto en la URL JDBC, Spring Boot no podía autenticarse y los pods crasheaban.
+
+**Solución:** Se agregó la variable `SPRING_DATASOURCE_URL` al Kubernetes Secret
+`backend-secrets` con la URL JDBC completa incluyendo los parámetros necesarios:
+jdbc:mysql://mysql-service:3306/innovatech?allowPublicKeyRetrieval=true&useSSL=false
+
+```bash
+kubectl patch secret backend-secrets -p \
+  '{"data":{"SPRING_DATASOURCE_URL":"<valor en base64>"}}'
+
+kubectl rollout restart deployment ventas-deployment
+kubectl rollout restart deployment despachos-deployment
+```
+
+### Variables de entorno no inyectadas en los Deployments
+**Causa:** Los manifiestos YAML originales de los deployments no referenciaban
+el secret `backend-secrets`, por lo que Spring Boot no recibía las variables
+de conexión a la base de datos.
+
+**Solución:** Se aplicó un `patch` a ambos deployments para inyectar el secret
+mediante `envFrom`:
+
+```bash
+kubectl patch deployment ventas-deployment \
+  --patch '{"spec":{"template":{"spec":{"containers":[{"name":"ventas","envFrom":[{"secretRef":{"name":"backend-secrets"}}]}]}}}}'
+
+kubectl patch deployment despachos-deployment \
+  --patch '{"spec":{"template":{"spec":{"containers":[{"name":"despachos","envFrom":[{"secretRef":{"name":"backend-secrets"}}]}]}}}}'
+```
+
+---
+
+## Justificación del umbral HPA (50% CPU)
+
+Se eligió el **50% de uso de CPU** como umbral de escalado porque representa
+un punto de equilibrio entre rendimiento y costo:
+
+- Permite absorber picos de carga antes de que afecten la experiencia del usuario.
+- Evita escalar prematuramente ante uso normal.
+- Con instancias `t3.medium` (2 vCPU), el 50% equivale a **1 vCPU disponible
+  como margen** antes de que Kubernetes agregue una nueva réplica.
+
+Configuración aplicada:
+- Mínimo: 1 réplica
+- Máximo: 4 réplicas
+- Target CPU: 50%
