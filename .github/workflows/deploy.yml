@@ -7,17 +7,12 @@ on:
 
 jobs:
 
-  # ─────────────────────────────────────────────
-  # JOB 1: Build y Push — API Ventas
-  # ─────────────────────────────────────────────
   build-ventas:
     name: Build & Push — API Ventas
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -25,10 +20,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Login a Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build y Push imagen Ventas a ECR
         uses: docker/build-push-action@v5
         with:
@@ -37,17 +30,12 @@ jobs:
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:ventas-latest
 
-  # ─────────────────────────────────────────────
-  # JOB 2: Build y Push — API Despachos
-  # ─────────────────────────────────────────────
   build-despachos:
     name: Build & Push — API Despachos
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -55,10 +43,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Login a Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build y Push imagen Despachos a ECR
         uses: docker/build-push-action@v5
         with:
@@ -67,18 +53,13 @@ jobs:
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:despachos-latest
 
-  # ─────────────────────────────────────────────
-  # JOB 3: Deploy en EKS
-  # ─────────────────────────────────────────────
   deploy:
     name: Deploy en EKS
     runs-on: ubuntu-latest
     needs: [build-ventas, build-despachos]
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -86,19 +67,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Configurar kubectl para EKS
         run: |
           aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
-
       - name: Rollout restart Ventas
-        run: kubectl rollout restart deployment/ventas-deployment
-
+        run: kubectl rollout restart deployment/ventas-deployment -n innovatech
       - name: Rollout restart Despachos
-        run: kubectl rollout restart deployment/despachos-deployment
-
+        run: kubectl rollout restart deployment/despachos-deployment -n innovatech
       - name: Verificar estado del despliegue
         run: |
-          kubectl rollout status deployment/ventas-deployment --timeout=180s
-          kubectl rollout status deployment/despachos-deployment --timeout=180s
-          kubectl get pods
+          kubectl rollout status deployment/ventas-deployment -n innovatech --timeout=180s
+          kubectl rollout status deployment/despachos-deployment -n innovatech --timeout=180s
+          kubectl get pods -n innovatech
