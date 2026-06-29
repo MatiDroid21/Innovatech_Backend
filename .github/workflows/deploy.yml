@@ -28,7 +28,7 @@ jobs:
           context: ./back-Ventas_SpringBoot/Springboot-API-REST
           file: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
           push: true
-          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:ventas-latest
+          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-ventas:latest
 
   build-despachos:
     name: Build & Push — API Despachos
@@ -51,7 +51,7 @@ jobs:
           context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
           file: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
           push: true
-          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:despachos-latest
+          tags: ${{ secrets.ECR_REGISTRY }}/inovatech-despachos:latest
 
   deploy:
     name: Deploy en EKS
@@ -72,9 +72,10 @@ jobs:
           aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
       - name: Deploy manifiestos en EKS
         run: |
-          kubectl apply -f k8s/ -n innovatech
+          kubectl apply -f k8s/
       - name: Verificar estado del despliegue
         run: |
-          kubectl rollout status deployment/ventas-deployment -n innovatech --timeout=180s
-          kubectl rollout status deployment/despachos-deployment -n innovatech --timeout=180s
-          kubectl get pods -n innovatech
+          kubectl rollout status deployment/mysql-deployment --timeout=120s
+          kubectl rollout status deployment/ventas-deployment --timeout=180s
+          kubectl rollout status deployment/despachos-deployment --timeout=180s
+          kubectl get pods
