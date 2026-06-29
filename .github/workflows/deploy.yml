@@ -26,7 +26,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./back-Ventas_SpringBoot/Springboot-API-REST
-          dockerfile: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
+          file: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:ventas-latest
 
@@ -49,7 +49,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-          dockerfile: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
+          file: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
           push: true
           tags: ${{ secrets.ECR_REGISTRY }}/inovatech-backend:despachos-latest
 
@@ -70,10 +70,9 @@ jobs:
       - name: Configurar kubectl para EKS
         run: |
           aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
-      - name: Rollout restart Ventas
-        run: kubectl rollout restart deployment/ventas-deployment -n innovatech
-      - name: Rollout restart Despachos
-        run: kubectl rollout restart deployment/despachos-deployment -n innovatech
+      - name: Deploy manifiestos en EKS
+        run: |
+          kubectl apply -f k8s/ -n innovatech
       - name: Verificar estado del despliegue
         run: |
           kubectl rollout status deployment/ventas-deployment -n innovatech --timeout=180s
